@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.test-work/
+.venv/
+venv/
+.env
+.env.*
+/data/
+*.sqlite
+*.sqlite3
+*.db
+evidence/local-run-*.json
+evidence/live_request_response.json
+calendar.csv
