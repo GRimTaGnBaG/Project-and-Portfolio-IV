@@ -60,3 +60,16 @@ def test_real_pdf_extraction_and_image_only_rejection(tmp_path):
 def test_invalid_range_rejected():
     s=baseline([TEXT])
     with pytest.raises(ValueError): calendar_rows(s,date(2026,11,3),date(2026,11,2))
+
+
+def test_readable_cover_cannot_hide_scanned_schedule_page(tmp_path):
+    # Build a hybrid packet: text on page one, an image-only page two. An
+    # extractor must not silently treat the readable subset as the whole plan.
+    doc=pymupdf.open(); page=doc.new_page()
+    page.insert_text((40,40),'FICTIONAL research packet cover')
+    image=pymupdf.Pixmap(pymupdf.csRGB,pymupdf.IRect(0,0,20,20),False)
+    image.clear_with(255)
+    page=doc.new_page(); page.insert_image(page.rect,pixmap=image)
+    path=tmp_path/'hybrid.pdf'; path.write_bytes(doc.tobytes()); doc.close()
+    with pytest.raises(ValueError,match='Pages 2.*OCR'):
+        extract_pdf(path)

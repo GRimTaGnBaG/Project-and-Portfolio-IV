@@ -66,8 +66,15 @@ def extract_pdf(path: Path) -> list[str]:
         if not 1 <= len(doc) <= 30:
             raise ValueError('Select a PDF containing 1 to 30 pages')
         pages = [p.get_text() for p in doc]
+        # A readable cover must not hide scanned schedule pages later in a
+        # packet. Remember image-bearing pages with no text before closing PDF.
+        image_only_pages = [i+1 for i,p in enumerate(doc)
+                            if not pages[i].strip() and p.get_images()]
     if not ''.join(pages).strip():
         raise ValueError('No readable text found; image-only PDFs require OCR')
+    if image_only_pages:
+        page_numbers=', '.join(map(str,image_only_pages))
+        raise ValueError(f'Pages {page_numbers} contain images without readable text; OCR review is required')
     if sum(map(len, pages)) > 40000:
         raise ValueError('Document exceeds the 40000-character research limit')
     return pages

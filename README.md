@@ -18,4 +18,13 @@ Use fictional research documents. The current input scope is text-based PDFs; sc
 
 ## Setup
 
-Python 3.12 is the development target. Dependencies and executable modules will arrive with the staged source upload. This initial repository setup is not yet runnable on its own.
+Python 3.12 is the development target. The first staged import includes extraction, validation, a baseline experiment, and backend tests. From this repository folder:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe run_research.py
+```
+
+The desktop interface and storage modules will arrive in the next import stage. The extractor now also rejects mixed packets containing image-only pages so a readable cover cannot hide a scanned schedule. Nine focused backend checks pass at this stage.
