@@ -51,3 +51,20 @@ def test_bad_edit_cannot_leave_previous_approval():
     session=approved_session()
     with pytest.raises(ValueError): session.approve('{}')
     assert not session.approved and session.rows==[]
+
+
+def test_invalid_export_cannot_truncate_an_existing_file(tmp_path):
+    path=tmp_path/'existing.csv'; path.write_text('retained original export')
+    rows=[{'date':'2026-11-02','parent':'A'},{'date':'2026-11-03','parent':'=unexpected'}]
+    with pytest.raises(ValueError): export_csv(path,rows,overwrite=True)
+    assert path.read_text()=='retained original export'
+    new_path=tmp_path/'new.csv'
+    with pytest.raises(ValueError): export_csv(new_path,rows)
+    assert not new_path.exists()
+
+
+def test_duplicate_export_dates_are_rejected_before_writing(tmp_path):
+    path=tmp_path/'duplicate.csv'
+    with pytest.raises(ValueError,match='repeat'):
+        export_csv(path,[{'date':'2026-11-02','parent':'A'},{'date':'2026-11-02','parent':'B'}])
+    assert not path.exists()

@@ -9,7 +9,7 @@ import csv
 from contextlib import contextmanager
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from .session import ReviewSession
 from .core import Schedule
@@ -79,6 +79,25 @@ class Store:
 def export_csv(path: Path, rows: list[dict], overwrite=False):
     if not rows:
         raise ValueError('Generate calendar rows before exporting')
+    # Validate the entire batch before opening the destination. A malformed
+    # later row must not truncate an existing export or leave a partial new one.
+    # ISO dates and A/B labels also prevent arbitrary spreadsheet formulas from
+    # entering these two exported columns through an unexpected caller.
+    seen_dates=set()
+    for row in rows:
+        if not isinstance(row,dict) or set(row)!={'date','parent'}:
+            raise ValueError('Each export row must contain only date and parent')
+        if not isinstance(row['date'],str):
+            raise ValueError('Export dates must be ISO date strings')
+        try:
+            parsed=date.fromisoformat(row['date'])
+        except ValueError as error:
+            raise ValueError('Export dates must be valid ISO dates') from error
+        if parsed.isoformat()!=row['date'] or row['parent'] not in ('A','B'):
+            raise ValueError('Export rows require ISO dates and Parent A/B labels')
+        if row['date'] in seen_dates:
+            raise ValueError('Export rows must not repeat a date')
+        seen_dates.add(row['date'])
     # Exclusive creation protects an existing file even if UI state changes
     # between the existence check and this write. Only explicit overwrite uses w.
     with path.open('w' if overwrite else 'x', newline='', encoding='utf-8') as stream:

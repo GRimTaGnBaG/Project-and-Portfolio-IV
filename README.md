@@ -27,4 +27,6 @@ python -m venv .venv
 .\.venv\Scripts\python.exe run_research.py
 ```
 
-The desktop interface and storage modules will arrive in the next import stage. The extractor now also rejects mixed packets containing image-only pages so a readable cover cannot hide a scanned schedule. Nine focused backend checks pass at this stage.
+The second staged import includes the desktop interface, approval workflow, SQLite storage, CSV export, and historical comparison view. Launch it with `.\.venv\Scripts\python.exe app.py`. The extractor also rejects mixed packets containing image-only pages so a readable cover cannot hide a scanned schedule.
+
+A separate export safeguard validates the entire row batch before opening a destination, preventing malformed or duplicate rows from truncating an existing CSV. Eighteen automated checks pass at this stage. The longer fictional fixtures, evaluation scripts, and expanded GUI tests will arrive in the final import stage.
