@@ -8,6 +8,8 @@ import argparse
 import hashlib
 import json
 import time
+import re
+from datetime import date
 from pathlib import Path
 from uuid import uuid4
 import pymupdf
@@ -15,6 +17,51 @@ from parentvault.core import extract_pdf, baseline
 from parentvault.local_model import SYSTEM_PROMPT, extract_local
 
 ROOT=Path(__file__).parent
+
+
+def load_cases(path: Path):
+    """Validate the experiment manifest before writing files or running models.
+
+    IDs become filenames, so accept only bounded filename-safe identifiers.
+    Duplicate IDs would overwrite evidence and inflate apparent case counts.
+    Validate authored answer shapes up front so malformed keys cannot turn
+    evaluation failures into misleading measurements after expensive inference.
+    """
+    cases=json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(cases,list) or not cases:
+        raise ValueError('Evaluation manifest must be a nonempty list')
+    seen=set()
+    for case in cases:
+        if not isinstance(case,dict): raise ValueError('Each evaluation case must be an object')
+        identifier=case.get('id')
+        if not isinstance(identifier,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,79}',identifier):
+            raise ValueError('Case IDs must be filename-safe identifiers of at most 80 characters')
+        if identifier in seen: raise ValueError('Duplicate case IDs would overwrite evidence')
+        seen.add(identifier)
+        if case.get('split') not in ('development','held_out'):
+            raise ValueError('Each case needs a development or held_out split')
+        kind=case.get('kind')
+        if kind not in ('week','pattern','reject'): raise ValueError('Unsupported case kind')
+        if kind=='reject':
+            if not isinstance(case.get('text'),str) or not case['text'].strip():
+                raise ValueError('A rejection case requires explicit source text')
+            continue
+        anchor=case.get('anchor')
+        try:
+            parsed=date.fromisoformat(anchor) if isinstance(anchor,str) else None
+        except ValueError as error:
+            raise ValueError('Supported cases require a valid ISO anchor date') from error
+        if parsed is None or parsed.isoformat()!=anchor:
+            raise ValueError('Supported cases require a valid ISO anchor date')
+        if kind=='week':
+            if (case.get('first'),case.get('second')) not in (('A','B'),('B','A')):
+                raise ValueError('Weekly cases require different A/B owners')
+        else:
+            cycle=case.get('cycle')
+            if (not isinstance(cycle,list) or len(cycle)!=14 or
+                any(owner not in ('A','B') for owner in cycle) or set(cycle)!={'A','B'}):
+                raise ValueError('Pattern cases require fourteen A/B entries containing both owners')
+    return cases
 
 
 def case_text(case):
@@ -40,7 +87,7 @@ def main():
     parser.add_argument('--split',choices=['development','held_out'],default='held_out')
     parser.add_argument('--model',default='parentvault-research')
     args=parser.parse_args()
-    cases=json.loads((ROOT/'fixtures'/'evaluation_cases.json').read_text())
+    cases=load_cases(ROOT/'fixtures'/'evaluation_cases.json')
     output=ROOT/'data'/f'dataset-{args.split}-{uuid4().hex}'
     output.mkdir(parents=True)
     results=[]
