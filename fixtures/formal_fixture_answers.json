@@ -1,0 +1,36 @@
+{
+  "formal_recurring_plan.pdf": {
+    "anchor_date": "2026-11-02",
+    "cycle": [
+      "A",
+      "A",
+      "A",
+      "A",
+      "A",
+      "A",
+      "A",
+      "B",
+      "B",
+      "B",
+      "B",
+      "B",
+      "B",
+      "B"
+    ],
+    "rule_page": 3,
+    "exchange_weekday": "Monday",
+    "exchange_time": "18:00",
+    "expected": "reviewable_recurring_plan"
+  },
+  "formal_plan_with_exceptions.pdf": {
+    "expected": "block_for_unsupported_or_missing_provisions",
+    "reasons": [
+      "holiday override",
+      "school break dates missing"
+    ]
+  },
+  "formal_recurring_plan_scanned.pdf": {
+    "expected": "reject_no_readable_text",
+    "ocr_required": true
+  }
+}

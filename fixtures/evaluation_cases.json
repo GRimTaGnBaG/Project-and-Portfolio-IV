@@ -1,0 +1,14 @@
+[
+  {"id":"dev_week_a","split":"development","kind":"week","anchor":"2026-11-02","first":"A","second":"B"},
+  {"id":"dev_week_b","split":"development","kind":"week","anchor":"2026-12-07","first":"B","second":"A"},
+  {"id":"test_week_a","split":"held_out","kind":"week","anchor":"2027-01-04","first":"A","second":"B"},
+  {"id":"test_week_b","split":"held_out","kind":"week","anchor":"2028-02-28","first":"B","second":"A"},
+  {"id":"dev_pattern_a","split":"development","kind":"pattern","anchor":"2026-11-03","cycle":["A","A","B","B","A","A","A","B","B","A","A","B","B","B"]},
+  {"id":"dev_pattern_b","split":"development","kind":"pattern","anchor":"2026-12-01","cycle":["B","B","A","A","B","B","B","A","A","B","B","A","A","A"]},
+  {"id":"test_pattern_a","split":"held_out","kind":"pattern","anchor":"2027-03-01","cycle":["A","A","A","B","B","B","B","A","A","A","B","B","B","B"]},
+  {"id":"test_pattern_b","split":"held_out","kind":"pattern","anchor":"2027-06-07","cycle":["B","A","B","A","B","A","B","A","B","A","B","A","B","A"]},
+  {"id":"dev_missing_anchor","split":"development","kind":"reject","text":"Parent A has seven overnights, then Parent B has seven overnights. No start date is specified."},
+  {"id":"dev_conflicting","split":"development","kind":"reject","text":"Beginning 2026-11-02, Parent A has seven consecutive overnights, followed by seven consecutive overnights with Parent B. This 14-day cycle repeats. Beginning 2026-11-02, Parent B has seven consecutive overnights, followed by seven consecutive overnights with Parent A. This 14-day cycle repeats."},
+  {"id":"test_holiday","split":"held_out","kind":"reject","text":"Beginning 2027-01-04, Parent A has seven consecutive overnights, followed by seven consecutive overnights with Parent B. This 14-day cycle repeats. Holiday override: Parent B has December 24 regardless of the regular pattern."},
+  {"id":"test_incomplete","split":"held_out","kind":"reject","text":"Beginning 2027-02-01, Parent A has the first three overnights. Remaining overnight ownership is not specified. Do not infer the remaining days."}
+]
