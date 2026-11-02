@@ -199,6 +199,9 @@ def build(window):
     w.save_button=button('Save approved plan',w.save,True);row.addWidget(w.record_name,1);row.addWidget(w.save_button)
     content.addLayout(row);layout.addWidget(frame)
     frame,content=card('Your plans');w.record_list=QComboBox();content.addWidget(w.record_list)
+    # Keep the legacy ID-backed selection internally, but use one visible table
+    # as the action target so a second selector cannot bypass the search filter.
+    w.record_list.hide()
     w.record_search=QLineEdit();w.record_search.setPlaceholderText('Search by plan name or filename')
     w.record_search.textChanged.connect(w.filter_records);content.insertWidget(1,w.record_search)
     w.record_table=QTableWidget(0,3);w.record_table.setHorizontalHeaderLabels(['Plan and source','Review status','Saved'])

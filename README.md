@@ -6,7 +6,7 @@ I am developing a Windows desktop research application for turning supported tex
 
 ## Repository organization
 
-I am importing the existing local project into this repository in stages: setup, extraction and validation, desktop workflow, then fictional fixtures and planning notes. Commit timestamps record when each batch is uploaded, not when the underlying work was first created.
+The initial staged imports are complete. I keep a separate local development checkout and integrate reviewed changes into the publishing checkout. Original development commits retain their timestamps; integration and push dates are not claims that earlier work was newly written on those dates.
 
 ## Planned workflow
 
@@ -29,7 +29,11 @@ python -m venv .venv
 
 The second staged import includes the desktop interface, approval workflow, SQLite storage, CSV export, and historical comparison view. Launch it with `.\.venv\Scripts\python.exe app.py`. The extractor also rejects mixed packets containing image-only pages so a readable cover cannot hide a scanned schedule.
 
-A separate export safeguard validates the entire row batch before opening a destination, preventing malformed or duplicate rows from truncating an existing CSV. The final staged import includes longer fictional fixtures, evaluation runners, and expanded GUI checks. Experiment manifests are validated before inference to reject unsafe or duplicate case IDs and malformed answer keys. Thirty-three automated checks pass in this repository checkpoint.
+A separate export safeguard validates the entire row batch before opening a destination, preventing malformed or duplicate rows from truncating an existing CSV. The final staged import includes longer fictional fixtures, evaluation runners, and expanded GUI checks. Experiment manifests are validated before inference to reject unsafe or duplicate case IDs and malformed answer keys. Thirty-five automated checks pass in the current desktop checkpoint.
+
+## Desktop interface
+
+The app has five sidebar pages: Document, Review Rules, Calendar, Saved Records, and Research Comparison. It includes native PDF viewing, editable rule fields, explicit approval acknowledgment, parent-labeled calendar cells, and saved-record search. The November 2 update also fixes filtered-record selection so Load/Delete cannot target an invisible previous selection. See [desktop design checkpoint](docs/DESKTOP_DESIGN.md).
 
 ## Research and verification
 

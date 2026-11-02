@@ -126,16 +126,31 @@ class MainWindow(QMainWindow):
 
     def filter_records(self):
         query=self.record_search.text().strip().casefold()
+        visible=[]
         for row in range(self.record_table.rowCount()):
             value=self.record_table.item(row,0)
-            self.record_table.setRowHidden(row,query not in value.text().casefold())
+            matches=value is not None and query in value.text().casefold()
+            self.record_table.setRowHidden(row,not matches)
+            if matches:visible.append(row)
+        # Filtering must also update the action target. Otherwise Load/Delete
+        # could operate on an old selection that is now hidden by the search.
+        current=self.record_table.currentRow()
+        if current not in visible:
+            self.record_table.clearSelection()
+            if visible:self.record_table.selectRow(visible[0])
+            else:self.record_table.setCurrentCell(-1,-1)
+        self.record_selected()
 
     def record_selected(self):
         row=self.record_table.currentRow()
-        if row>=0:
-            record_id=self.record_table.item(row,0).data(256)
+        item=self.record_table.item(row,0) if row>=0 else None
+        if item is not None and not self.record_table.isRowHidden(row):
+            record_id=item.data(256)
             index=self.record_list.findData(record_id)
-            if index>=0:self.record_list.setCurrentIndex(index)
+            self.record_list.setCurrentIndex(index)
+        else:
+            self.record_list.setCurrentIndex(-1)
+        self.update_controls()
 
     def choose_comparison(self):
         path,_=QFileDialog.getOpenFileName(self,'Open recorded evaluator results',str(ROOT/'data'),'JSON files (*.json)')
@@ -175,7 +190,9 @@ class MainWindow(QMainWindow):
         """Make workflow prerequisites visible in control availability."""
         busy=self.worker is not None and self.worker.isRunning()
         has_document=bool(self.session.pages)
-        for button in (self.open_button,self.load_button,self.delete_button): button.setEnabled(not busy)
+        self.open_button.setEnabled(not busy)
+        for button in (self.load_button,self.delete_button):
+            button.setEnabled(not busy and self.record_list.currentData() is not None)
         self.model.setEnabled(not busy)
         self.baseline_button.setEnabled(has_document and not busy)
         self.ai_button.setEnabled(has_document and not busy)
@@ -311,6 +328,7 @@ class MainWindow(QMainWindow):
     def refresh_records(self):
         self.record_list.clear()
         records=self.store.list_records()
+        self.record_table.blockSignals(True)
         self.record_table.setRowCount(len(records))
         for row,(record_id,name,created) in enumerate(records):
             self.record_list.addItem(f'{name} | {created}',record_id)
@@ -320,6 +338,7 @@ class MainWindow(QMainWindow):
             self.record_table.setItem(row,1,QTableWidgetItem('Review again when loaded'))
             self.record_table.setItem(row,2,QTableWidgetItem(created[:16].replace('T',' ')))
         self.record_table.resizeColumnsToContents()
+        self.record_table.blockSignals(False)
         self.filter_records()
 
     def save(self):

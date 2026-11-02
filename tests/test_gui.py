@@ -72,9 +72,20 @@ def test_saved_record_search_filters_real_records(tmp_path):
     window.session.replace_document([text],'fictional.pdf','fixture')
     window.present(baseline([text]),'Proposal')
     window.review_checkbox.setChecked(True);window.approve()
-    window.store.save('November fictional plan',window.session)
+    november_id=window.store.save('November fictional plan',window.session)
     window.store.save('December fictional plan',window.session)
     window.refresh_records();window.record_search.setText('november')
     visible=[r for r in range(window.record_table.rowCount()) if not window.record_table.isRowHidden(r)]
     assert len(visible)==1 and 'November' in window.record_table.item(visible[0],0).text()
+    assert window.record_list.currentData()==november_id
+    assert window.load_button.isEnabled() and window.delete_button.isEnabled()
+    window.record_search.setText('no matching fictional plan')
+    assert window.record_list.currentData() is None
+    assert not window.load_button.isEnabled() and not window.delete_button.isEnabled()
+    # An invisible selection must not be loaded even through a direct call.
+    current_session=window.session
+    window.load()
+    assert window.session is current_session
+    window.record_search.clear()
+    assert window.record_list.currentData() is not None and window.load_button.isEnabled()
     window.close();app.processEvents()
