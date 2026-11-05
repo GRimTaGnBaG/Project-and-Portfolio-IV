@@ -84,12 +84,9 @@ def source_view():
     return widget
 
 
-# DEMO 02 | Connect the interface to the workflow
-# The sidebar switches between five pages of the same window and session.
-# Each action button calls a controller method. For example, Choose PDF opens
-# a picker, while Open sample plan sends the bundled PDF to the same loader.
 def build(window):
     """Attach view attributes used by the tested controller methods."""
+    # Build widgets on the existing controller so the event handlers can update them.
     w=window
     w.setStyleSheet(STYLE);w.resize(1440,940);w.setMinimumSize(1100,760)
     central=QWidget();central.setObjectName('workspace');w.setCentralWidget(central)
@@ -106,9 +103,11 @@ def build(window):
     sidebar.addWidget(label('SAMPLE WORKSPACE\n\nUse fictional test documents. Review every rule before saving.','muted'))
     root.addWidget(side)
     workspace=QWidget();outer=QVBoxLayout(workspace);outer.setContentsMargins(0,0,0,12)
+    # Stack the pages so navigation shows one at a time without creating a new window.
     w.tabs=QStackedWidget();outer.addWidget(w.tabs,1)
     w.status=label('Select a fictional PDF to begin.','status');outer.addWidget(w.status)
     root.addWidget(workspace,1)
+    # Use the clicked button's ID as the index of the page to show.
     w.navigation.idClicked.connect(w.show_page)
     w.tabs.currentChanged.connect(w.page_changed)
 
@@ -183,6 +182,7 @@ def build(window):
     advanced_layout=QVBoxLayout(advanced);w.rules=QPlainTextEdit();w.rules.setMinimumHeight(200)
     w.rules.setAccessibleName('Proposed scheduling rules JSON');advanced_layout.addWidget(w.rules)
     w.rules.setVisible(False);advanced.toggled.connect(w.rules.setVisible);right.addWidget(advanced)
+    # Notify the controller when the rule text changes so prior approval is cleared.
     w.rules.textChanged.connect(w.rules_edited)
     w.anchor_edit.dateChanged.connect(w.form_edited)
     w.exchange_day.textEdited.connect(w.form_edited);w.exchange_time.textEdited.connect(w.form_edited)

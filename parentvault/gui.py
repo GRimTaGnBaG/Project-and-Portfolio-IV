@@ -86,11 +86,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setFont(QFont('Segoe UI',10))
         self.setWindowTitle('ParentVault AI — Document to Calendar')
+        # Keep one review session shared by the document, review, and calendar pages.
         self.session = ReviewSession()
         self.worker = None
         self._syncing = False
         self.data_dir = Path(store_path).parent if store_path else data_directory()
         self.comparison_results = None
+        # Open the saved-record store separately from the current review session.
         self.store = Store(store_path or self.data_dir/'parentvault.sqlite3')
         from .views import build
         build(self)
@@ -225,6 +227,7 @@ class MainWindow(QMainWindow):
 
     def update_controls(self):
         """Make workflow prerequisites visible in control availability."""
+        # While a worker is active, disable controls that could replace its input or start another request.
         busy=self.worker is not None and self.worker.isRunning()
         has_document=bool(self.session.pages)
         self.open_button.setEnabled(not busy)
@@ -242,6 +245,7 @@ class MainWindow(QMainWindow):
             control.setEnabled(bool(self.rules.toPlainText().strip()) and not busy)
         self.approval_badge.setText('Rules approved' if self.session.approved else 'Not yet approved')
         self.approve_button.setEnabled(bool(self.rules.toPlainText().strip()) and self.review_checkbox.isChecked() and not busy)
+        # Enable calendar generation only while the current proposal has approval.
         self.generate_button.setEnabled(self.session.approved and not busy)
         self.save_button.setEnabled(self.session.approved and not busy)
         self.export_button.setEnabled(bool(self.session.rows) and not busy)
@@ -270,10 +274,6 @@ class MainWindow(QMainWindow):
         if not path: return  # Cancel is not replacement; preserve the current session.
         self.load_pdf(Path(path))
 
-    # DEMO 03 | Follow a click from the UI to a document
-    # Opening a different PDF starts a new review session. The app clears the
-    # old calendar first so a failed import cannot leave another plan on screen.
-    # The native preview shows the PDF and the text tab shows what extraction reads.
     def load_pdf(self, path):
         path = str(path)
         # Invalidate first, so even a failed replacement cannot leave an old
@@ -282,7 +282,9 @@ class MainWindow(QMainWindow):
         self.pdf_document.close()
         self.file_label.setText(Path(path).name)
         try:
+            # Extract text for validation while the PDF widget handles the visual preview.
             pages=extract_pdf(Path(path))
+            # Hash the PDF bytes to identify the source independently of its filename.
             digest=hashlib.sha256(Path(path).read_bytes()).hexdigest()
             self.session.replace_document(pages,Path(path).name,digest)
             self.pdf_document.load(path)
@@ -294,9 +296,11 @@ class MainWindow(QMainWindow):
         self.update_controls()
 
     def present(self, schedule, message):
+        # Install a validated proposal. Approval is a separate action taken on the review page.
         self.session.propose(schedule)
         self.set_source_text()
         self.file_label.setText(self.session.source_name)
+        # Put the proposal into the editable rules panel as JSON.
         self.rules.setPlainText(schedule.model_dump_json(indent=2))
         self.month.setCurrentPage(schedule.anchor_date.year,schedule.anchor_date.month)
         if self.pdf_document.pageCount():
@@ -307,27 +311,21 @@ class MainWindow(QMainWindow):
         self.status.setText(message+' Review the source and approve the rules.')
         self.update_controls()
 
-    # DEMO 05 | Get the first rule proposal
-    # Baseline mode looks for a supported alternating-week sentence. It runs
-    # without LM Studio, which makes it a repeatable way to show the workflow.
-    # Both extraction methods send successful proposals to present() for review.
     def run_baseline(self):
         self.session.invalidate(); self.rules.clear(); self.clear_results()
         try: self.present(baseline(self.session.pages),'Baseline proposal ready.')
         except Exception as error: self.error(error)
 
-    # DEMO 06 | Keep the window responsive during inference
-    # A local model call takes longer than a button click. QThread runs the call
-    # in the background and returns a result or error through a signal. The main
-    # thread receives that signal and updates the widgets.
     def run_ai(self):
         if not self.model.text().strip():
             self.error('Enter the exact loaded LM Studio model identifier'); return
         self.session.invalidate(); self.rules.clear(); self.clear_results()
         self.worker=InferenceWorker(self.session.pages,self.model.text().strip())
+        # Connect each signal to its handler before starting the background request.
         self.worker.succeeded.connect(self.ai_ready)
         self.worker.failed.connect(self.error)
         self.worker.finished.connect(self.worker_finished)
+        # Start the worker after connecting its result and cleanup signals.
         self.worker.start()
         self.status.setText('Local AI is extracting proposed rules. Request has a bounded timeout.')
         self.update_controls()
@@ -339,15 +337,12 @@ class MainWindow(QMainWindow):
     def worker_finished(self):
         self.worker.deleteLater(); self.worker=None; self.update_controls()
 
-    # DEMO 08 | Show the human review step
-    # I compare the date, rotation, and source quotation before checking the box.
-    # Clicking Approve passes the current editor contents to ReviewSession, which
-    # validates them again. Editing the rules clears approval and previous dates.
     def approve(self):
         if not self.review_checkbox.isChecked():
             self.status.setText('Check that you reviewed the rules and source before approval.')
             return
         try:
+            # Pass the exact text on screen into the session's schema, source, and warning checks.
             self.session.approve(self.rules.toPlainText())
             self.status.setText('Approved. Generate the displayed month or save the configuration.')
         except Exception as error: self.error(error)
@@ -358,13 +353,10 @@ class MainWindow(QMainWindow):
         # source rules. Clear old rows to avoid exporting a different month.
         self.session.rows=[]; self.clear_results(); self.update_controls()
 
-    # DEMO 09 | Turn the approved rules into dates
-    # The calendar supplies the year and month. The session checks approval and
-    # returns one owner per overnight. Both the color-coded calendar and the table
-    # use those same rows, so the on-screen views agree with the CSV export.
     def generate(self):
         try:
             year,month=self.month.yearShown(),self.month.monthShown()
+            # Generate an inclusive range from the first through the last date of the selected month.
             rows=self.session.generate(date(year,month,1),date(year,month,calendar.monthrange(year,month)[1]))
             self.table.setRowCount(len(rows))
             for index,row in enumerate(rows):
@@ -373,6 +365,7 @@ class MainWindow(QMainWindow):
                 fmt=QTextCharFormat()
                 fmt.setBackground(QColor('#cfe8ff' if row['parent']=='A' else '#ffe6aa'))
                 self.month.setDateTextFormat(QDate.fromString(row['date'],'yyyy-MM-dd'),fmt)
+            # Give the calendar the same ownership rows that populate the table.
             self.month.set_ownership(rows)
             self.status.setText(f'Generated {len(rows)} overnight assignments from approved rules.')
         except Exception as error: self.error(error)
@@ -416,6 +409,7 @@ class MainWindow(QMainWindow):
         record_id=self.record_list.currentData()
         if record_id is None: return
         try:
+            # Rebuild the review state from saved rules and extracted pages.
             session=self.store.load(record_id)
             self.session=session; self.clear_results()
             # Saved provenance includes extracted source pages, not a retained
@@ -447,6 +441,7 @@ class MainWindow(QMainWindow):
         self.worker.failed.connect(self.model_status.setText)
         self.worker.finished.connect(self.worker_finished)
         self.model_status.setText('Checking the local model server…')
+        # Start the worker after connecting its result and cleanup signals.
         self.worker.start()
         self.update_controls()
 
@@ -457,15 +452,11 @@ class MainWindow(QMainWindow):
         if self.model.text().strip() not in identifiers:
             self.model.setText('parentvault-research' if 'parentvault-research' in identifiers else identifiers[0])
 
-    # DEMO 12 | Compare baseline and model outputs
-    # The comparison worker runs both methods against a copy of the current pages.
-    # If I approved the rules first, they provide a reference for the field checks.
-    # The results show agreement and runtime for this document. The current review
-    # session and its approval stay separate from the comparison.
     def run_comparison(self):
         """Use approved rules as an explicitly labeled reference, never a hidden key."""
         if not self.session.pages or not self.model.text().strip():
             self.error('Select a document and enter the loaded model identifier first.'); return
+        # Use approved rules as the comparison reference when available. Otherwise the result reports outputs without a match score.
         expected = self.session.schedule.model_dump(mode='json') if self.session.approved else None
         self.comparison_results = None
         self.comparison_table.setRowCount(0)
@@ -475,6 +466,7 @@ class MainWindow(QMainWindow):
         self.worker.succeeded.connect(self.comparison_ready)
         self.worker.failed.connect(self.error)
         self.worker.finished.connect(self.worker_finished)
+        # Start the worker after connecting its result and cleanup signals.
         self.worker.start()
         self.update_controls()
 
@@ -484,6 +476,7 @@ class MainWindow(QMainWindow):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(results, indent=2), encoding='utf-8')
         self.open_comparison(path)
+        # Keep the summarized result available for a later JSON export.
         self.comparison_results = results
         reference = 'reviewed rules; not independent ground truth' if results[0].get('expected') else 'none; accuracy unscored'
         self.comparison_label.setText('Fresh measured comparison. Reference: ' + reference + '. Approval is unchanged.')

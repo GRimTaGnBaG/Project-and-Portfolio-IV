@@ -49,11 +49,6 @@ class Schedule(BaseModel):
         return self
 
 
-# DEMO 04 | Explain the input boundary
-# PyMuPDF reads each text page separately. Keeping the page boundaries lets
-# the app check a quotation against the specific page the proposal cites.
-# A scanned page without readable text is flagged because this version needs
-# a text layer to interpret the schedule.
 def extract_pdf(path: Path) -> list[str]:
     """Read bounded text PDFs and keep page boundaries for evidence checking.
 
@@ -65,11 +60,13 @@ def extract_pdf(path: Path) -> list[str]:
         raise ValueError('Select a PDF file')
     if path.stat().st_size > 10_000_000:
         raise ValueError('PDF exceeds the research limit of 10 MB')
+    # The context manager releases the PDF file even when validation raises an error.
     with pymupdf.open(path) as doc:
         if doc.needs_pass:
             raise ValueError('Encrypted PDFs are unsupported')
         if not 1 <= len(doc) <= 30:
             raise ValueError('Select a PDF containing 1 to 30 pages')
+        # Keep one string per page so evidence can be traced back to its source.
         pages = [p.get_text() for p in doc]
         # A readable cover must not hide scanned schedule pages later in a
         # packet. Remember image-bearing pages with no text before closing PDF.
@@ -106,9 +103,11 @@ def validate_grounding(schedule: Schedule, pages: list[str]) -> None:
         # Compare every explicit occurrence. Multiple contradictory statements
         # must fail rather than accepting whichever one a model happened to use.
         for match in explicit:
+            # Expand the two parent labels into seven nights each, then check the proposal against the source.
             expected_cycle=[match[2]]*7+[match[3]]*7
             if schedule.anchor_date.isoformat()!=match[1] or schedule.cycle!=expected_cycle:
                 raise ValueError('Proposed anchor/cycle contradicts an explicit source rotation')
+    # Require a warning when the source mentions a possible exception. Approval later rejects any unresolved warnings.
     if EXCEPTION_TERMS.search(text) and not schedule.warnings:
         raise ValueError('Source contains possible exceptions; warnings cannot be empty')
 
@@ -121,12 +120,14 @@ def baseline(pages: list[str]) -> Schedule:
     Whitespace normalization accounts for visual line wrapping in PDF extraction.
     """
     text = normalize('\n'.join(pages))
+    # Collect every matching clause so multiple rotations cannot silently turn into one proposal.
     matches = list(WEEK_RULE.finditer(text))
     if len(matches) != 1 or matches[0][2] == matches[0][3]:
         raise ValueError('Baseline cannot determine one supported alternating-week rule')
     if EXCEPTION_TERMS.search(text):
         raise ValueError('Potential exception requires review; baseline abstained')
     match = matches[0]
+    # Regex group zero is the complete matched sentence. The numbered groups hold the date and the two parent labels.
     quote = match[0]
     page = next((i+1 for i,p in enumerate(pages) if quote in normalize(p)), None)
     if page is None:
@@ -141,11 +142,6 @@ def baseline(pages: list[str]) -> Schedule:
                     exchange_time=times[0] if times else None)
 
 
-# DEMO 10 | Explain the date calculation with the sample
-# The anchor is November 2, 2026, so that date uses slot 0, Parent A.
-# November 9 is seven days later and uses slot 7, Parent B. November 1
-# is one day before the anchor. Python's -1 % 14 returns 13, which assigns
-# that overnight to Parent B. The same rules always produce the same dates.
 def calendar_rows(schedule: Schedule, start: date, end: date):
     """Return inclusive overnight rows with no AI involved in the calculation.
 
@@ -161,7 +157,10 @@ def calendar_rows(schedule: Schedule, start: date, end: date):
     # The extra one includes the final requested date rather than excluding it.
     rows = []
     for offset in range((end-start).days+1):
+        # Convert the loop offset into an actual calendar date.
         day = start + timedelta(days=offset)
+        # Subtract the anchor date to find the offset. Modulo wraps it into slots 0 through 13, including dates before the anchor.
         cycle_index = (day-schedule.anchor_date).days % 14
+        # Store one ISO date and owner per row. The table and CSV consume this same structure.
         rows.append({'date': day.isoformat(), 'parent': schedule.cycle[cycle_index]})
     return rows

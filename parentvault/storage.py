@@ -20,7 +20,9 @@ SCHEMA_VERSION = 1
 class Store:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Keep the database path so each operation can open its own short-lived connection.
         self.path = path
+        # Use a managed database connection. Successful writes commit and failed writes roll back.
         with self.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS schedules (
                 id INTEGER PRIMARY KEY, name TEXT NOT NULL, version INTEGER NOT NULL,
@@ -39,35 +41,38 @@ class Store:
             # not close it. Explicit close prevents file handles accumulating.
             connection.close()
 
-    # DEMO 11 | Save and reopen a reviewed plan
-    # SQLite stores the rules, extracted pages, and document identity together.
-    # A saved record preserves what was reviewed. When I reopen it, the app asks
-    # for approval again before generating dates from the restored rules.
     def save(self, name: str, session: ReviewSession) -> int:
         if not session.approved or session.schedule is None:
             raise ValueError('Only approved rules can be saved')
         if not name.strip():
             raise ValueError('Enter a record name')
+        # Serialize the rules alongside their source pages and document identity so the record can be reviewed after reopening.
         payload = {'rules': session.schedule.model_dump(mode='json'),
                    'pages': session.pages, 'source_name': session.source_name,
                    'source_hash': session.source_hash, 'approved_at_save': True}
+        # Use a managed database connection. Successful writes commit and failed writes roll back.
         with self.connect() as db:
+            # Bind values through placeholders so the record name and source text remain data.
             cursor = db.execute('INSERT INTO schedules(name,version,payload,created_at) VALUES(?,?,?,?)',
                 (name.strip(), SCHEMA_VERSION, json.dumps(payload), datetime.now(timezone.utc).isoformat()))
             return cursor.lastrowid
 
     def list_records(self):
+        # Use a managed database connection. Successful writes commit and failed writes roll back.
         with self.connect() as db:
             return db.execute('SELECT id,name,created_at FROM schedules ORDER BY id DESC').fetchall()
 
     def load(self, record_id: int) -> ReviewSession:
+        # Use a managed database connection. Successful writes commit and failed writes roll back.
         with self.connect() as db:
             row = db.execute('SELECT version,payload FROM schedules WHERE id=?',(record_id,)).fetchone()
         if row is None:
             raise ValueError('Saved record no longer exists')
+        # Reject incompatible stored layouts before reading fields from the payload.
         if row[0] != SCHEMA_VERSION:
             raise ValueError('Unsupported saved-record schema version')
         data = json.loads(row[1])
+        # Restore the record into a fresh session, which starts without approval.
         session = ReviewSession()
         session.replace_document(data['pages'],data['source_name'],data['source_hash'])
         session.propose(Schedule.model_validate(data['rules']))
@@ -76,14 +81,11 @@ class Store:
         return session
 
     def delete(self, record_id: int):
+        # Use a managed database connection. Successful writes commit and failed writes roll back.
         with self.connect() as db:
             db.execute('DELETE FROM schedules WHERE id=?',(record_id,))
 
 
-# VIDEO DETAIL | Export the generated month
-# The CSV uses the same date and parent rows as the calendar. The exporter
-# checks the entire batch for invalid or duplicate dates before opening the
-# file. That prevents a bad row from leaving a partial export.
 def export_csv(path: Path, rows: list[dict], overwrite=False):
     if not rows:
         raise ValueError('Generate calendar rows before exporting')
@@ -91,6 +93,7 @@ def export_csv(path: Path, rows: list[dict], overwrite=False):
     # later row must not truncate an existing export or leave a partial new one.
     # ISO dates and A/B labels also prevent arbitrary spreadsheet formulas from
     # entering these two exported columns through an unexpected caller.
+    # Track dates during validation so each exported overnight has only one row.
     seen_dates=set()
     for row in rows:
         if not isinstance(row,dict) or set(row)!={'date','parent'}:
@@ -109,6 +112,7 @@ def export_csv(path: Path, rows: list[dict], overwrite=False):
     # Exclusive creation protects an existing file even if UI state changes
     # between the existence check and this write. Only explicit overwrite uses w.
     with path.open('w' if overwrite else 'x', newline='', encoding='utf-8') as stream:
+        # Write the two columns in a predictable order for spreadsheet imports.
         writer = csv.DictWriter(stream, fieldnames=['date','parent'])
         writer.writeheader()
         writer.writerows(rows)
