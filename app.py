@@ -7,6 +7,9 @@ import sys
 from PySide6.QtWidgets import QApplication
 from parentvault.gui import MainWindow
 
+# DEMO 01 | Start the desktop app
+# QApplication owns the event loop. MainWindow builds the screens, and
+# application.exec() keeps listening for clicks, repaint events, and worker results.
 if __name__ == '__main__':
     application=QApplication(sys.argv)
     window=MainWindow()

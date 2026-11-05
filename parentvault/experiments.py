@@ -4,6 +4,10 @@ from .core import baseline
 from .local_model import extract_local
 
 
+# VIDEO DETAIL | Explain the research result
+# The timer measures each method separately. If one fails, its error stays
+# visible and the other method still has its own result. Matching a reviewed
+# sample measures agreement on that sample. Broader accuracy needs more cases.
 def compare_document(pages, model, expected=None, name='Current document', model_extractor=None):
     """Preserve each failure and measured runtime; never replace model failures.
 

@@ -270,6 +270,10 @@ class MainWindow(QMainWindow):
         if not path: return  # Cancel is not replacement; preserve the current session.
         self.load_pdf(Path(path))
 
+    # DEMO 03 | Follow a click from the UI to a document
+    # Opening a different PDF starts a new review session. The app clears the
+    # old calendar first so a failed import cannot leave another plan on screen.
+    # The native preview shows the PDF and the text tab shows what extraction reads.
     def load_pdf(self, path):
         path = str(path)
         # Invalidate first, so even a failed replacement cannot leave an old
@@ -303,11 +307,19 @@ class MainWindow(QMainWindow):
         self.status.setText(message+' Review the source and approve the rules.')
         self.update_controls()
 
+    # DEMO 05 | Get the first rule proposal
+    # Baseline mode looks for a supported alternating-week sentence. It runs
+    # without LM Studio, which makes it a repeatable way to show the workflow.
+    # Both extraction methods send successful proposals to present() for review.
     def run_baseline(self):
         self.session.invalidate(); self.rules.clear(); self.clear_results()
         try: self.present(baseline(self.session.pages),'Baseline proposal ready.')
         except Exception as error: self.error(error)
 
+    # DEMO 06 | Keep the window responsive during inference
+    # A local model call takes longer than a button click. QThread runs the call
+    # in the background and returns a result or error through a signal. The main
+    # thread receives that signal and updates the widgets.
     def run_ai(self):
         if not self.model.text().strip():
             self.error('Enter the exact loaded LM Studio model identifier'); return
@@ -327,6 +339,10 @@ class MainWindow(QMainWindow):
     def worker_finished(self):
         self.worker.deleteLater(); self.worker=None; self.update_controls()
 
+    # DEMO 08 | Show the human review step
+    # I compare the date, rotation, and source quotation before checking the box.
+    # Clicking Approve passes the current editor contents to ReviewSession, which
+    # validates them again. Editing the rules clears approval and previous dates.
     def approve(self):
         if not self.review_checkbox.isChecked():
             self.status.setText('Check that you reviewed the rules and source before approval.')
@@ -342,6 +358,10 @@ class MainWindow(QMainWindow):
         # source rules. Clear old rows to avoid exporting a different month.
         self.session.rows=[]; self.clear_results(); self.update_controls()
 
+    # DEMO 09 | Turn the approved rules into dates
+    # The calendar supplies the year and month. The session checks approval and
+    # returns one owner per overnight. Both the color-coded calendar and the table
+    # use those same rows, so the on-screen views agree with the CSV export.
     def generate(self):
         try:
             year,month=self.month.yearShown(),self.month.monthShown()
@@ -437,6 +457,11 @@ class MainWindow(QMainWindow):
         if self.model.text().strip() not in identifiers:
             self.model.setText('parentvault-research' if 'parentvault-research' in identifiers else identifiers[0])
 
+    # DEMO 12 | Compare baseline and model outputs
+    # The comparison worker runs both methods against a copy of the current pages.
+    # If I approved the rules first, they provide a reference for the field checks.
+    # The results show agreement and runtime for this document. The current review
+    # session and its approval stay separate from the comparison.
     def run_comparison(self):
         """Use approved rules as an explicitly labeled reference, never a hidden key."""
         if not self.session.pages or not self.model.text().strip():

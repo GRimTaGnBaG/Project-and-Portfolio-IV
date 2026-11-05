@@ -84,6 +84,10 @@ def source_view():
     return widget
 
 
+# DEMO 02 | Connect the interface to the workflow
+# The sidebar switches between five pages of the same window and session.
+# Each action button calls a controller method. For example, Choose PDF opens
+# a picker, while Open sample plan sends the bundled PDF to the same loader.
 def build(window):
     """Attach view attributes used by the tested controller methods."""
     w=window

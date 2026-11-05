@@ -35,6 +35,10 @@ class ReviewSession:
         validate_grounding(schedule, self.pages)
         self.schedule = schedule
 
+    # VIDEO DETAIL | The session enforces review outside the UI
+    # A disabled button is helpful feedback. This method also enforces approval
+    # from the current values, so generating or saving depends on the same rules
+    # even when those operations are called from outside the window.
     def approve(self, json_text: str):
         """Reparse edited JSON so widget edits cannot bypass schema validation."""
         self.invalidate()

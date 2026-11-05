@@ -39,6 +39,10 @@ class Store:
             # not close it. Explicit close prevents file handles accumulating.
             connection.close()
 
+    # DEMO 11 | Save and reopen a reviewed plan
+    # SQLite stores the rules, extracted pages, and document identity together.
+    # A saved record preserves what was reviewed. When I reopen it, the app asks
+    # for approval again before generating dates from the restored rules.
     def save(self, name: str, session: ReviewSession) -> int:
         if not session.approved or session.schedule is None:
             raise ValueError('Only approved rules can be saved')
@@ -76,6 +80,10 @@ class Store:
             db.execute('DELETE FROM schedules WHERE id=?',(record_id,))
 
 
+# VIDEO DETAIL | Export the generated month
+# The CSV uses the same date and parent rows as the calendar. The exporter
+# checks the entire batch for invalid or duplicate dates before opening the
+# file. That prevents a bad row from leaving a partial export.
 def export_csv(path: Path, rows: list[dict], overwrite=False):
     if not rows:
         raise ValueError('Generate calendar rows before exporting')

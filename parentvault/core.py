@@ -49,6 +49,11 @@ class Schedule(BaseModel):
         return self
 
 
+# DEMO 04 | Explain the input boundary
+# PyMuPDF reads each text page separately. Keeping the page boundaries lets
+# the app check a quotation against the specific page the proposal cites.
+# A scanned page without readable text is flagged because this version needs
+# a text layer to interpret the schedule.
 def extract_pdf(path: Path) -> list[str]:
     """Read bounded text PDFs and keep page boundaries for evidence checking.
 
@@ -136,6 +141,11 @@ def baseline(pages: list[str]) -> Schedule:
                     exchange_time=times[0] if times else None)
 
 
+# DEMO 10 | Explain the date calculation with the sample
+# The anchor is November 2, 2026, so that date uses slot 0, Parent A.
+# November 9 is seven days later and uses slot 7, Parent B. November 1
+# is one day before the anchor. Python's -1 % 14 returns 13, which assigns
+# that overnight to Parent B. The same rules always produce the same dates.
 def calendar_rows(schedule: Schedule, start: date, end: date):
     """Return inclusive overnight rows with no AI involved in the calculation.
 
