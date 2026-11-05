@@ -10,7 +10,8 @@ import hashlib
 import json
 from datetime import date
 from pathlib import Path
-from uuid import uuid4
+from .paths import data_directory
+from .experiments import compare_document
 
 from PySide6.QtCore import QDate, QThread, Signal, QPointF
 from PySide6.QtGui import QColor, QTextCharFormat, QFont
@@ -39,13 +40,45 @@ class InferenceWorker(QThread):
 
     def run(self):
         try:
-            # Unique names retain individual prompts/results for the report.
-            evidence = ROOT/'evidence'/f'local-run-{uuid4().hex}.json'
-            evidence.parent.mkdir(exist_ok=True)
-            schedule, record = extract_local(self.pages,self.model,evidence_path=evidence)
+            # Interactive use keeps source text and raw model responses in memory.
+            # Explicit research runners remain responsible for evidence archives.
+            schedule, record = extract_local(self.pages,self.model)
             self.succeeded.emit(schedule, record)
         except Exception as error:
             self.failed.emit(f'{type(error).__name__}: {error}')
+
+
+class ComparisonWorker(QThread):
+    """Compare a snapshot of the document without changing its review session."""
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, pages, model, expected, name):
+        super().__init__()
+        self.pages, self.model, self.expected, self.name = list(pages), model, expected, name
+
+    def run(self):
+        try:
+            self.succeeded.emit(compare_document(self.pages, self.model, self.expected, self.name))
+        except Exception as error:
+            self.failed.emit(str(error))
+
+
+class ModelStatusWorker(QThread):
+    """Probe only the local server with a short timeout, without blocking Qt."""
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def run(self):
+        import httpx
+        try:
+            with httpx.Client(timeout=5, trust_env=False) as client:
+                response=client.get('http://127.0.0.1:1235/v1/models')
+                response.raise_for_status()
+                identifiers=[item['id'] for item in response.json()['data']]
+            self.succeeded.emit(identifiers)
+        except Exception:
+            self.failed.emit('Local model unavailable. Start LM Studio, load a model, and start its local server on port 1235. Baseline extraction works without it.')
 
 
 class MainWindow(QMainWindow):
@@ -56,7 +89,9 @@ class MainWindow(QMainWindow):
         self.session = ReviewSession()
         self.worker = None
         self._syncing = False
-        self.store = Store(store_path or ROOT/'data'/'parentvault.sqlite3')
+        self.data_dir = Path(store_path).parent if store_path else data_directory()
+        self.comparison_results = None
+        self.store = Store(store_path or self.data_dir/'parentvault.sqlite3')
         from .views import build
         build(self)
         self.refresh_records()
@@ -162,6 +197,8 @@ class MainWindow(QMainWindow):
         """Render reviewed result files, keeping failures visibly distinct."""
         # Clear first: a malformed replacement must not leave prior results
         # looking as though they came from the newly selected evidence file.
+        self.comparison_results = None
+        self.update_controls()
         self.comparison_table.setRowCount(0)
         self.comparison_label.setText('Loading historical results…')
         manifest=ROOT/'fixtures'/'formal_fixture_answers.json'
@@ -194,6 +231,10 @@ class MainWindow(QMainWindow):
         for button in (self.load_button,self.delete_button):
             button.setEnabled(not busy and self.record_list.currentData() is not None)
         self.model.setEnabled(not busy)
+        self.model_check_button.setEnabled(not busy)
+        self.sample_button.setEnabled(not busy)
+        self.compare_run_button.setEnabled(has_document and not busy)
+        self.compare_export_button.setEnabled(bool(self.comparison_results) and not busy)
         self.baseline_button.setEnabled(has_document and not busy)
         self.ai_button.setEnabled(has_document and not busy)
         self.rules.setReadOnly(busy)
@@ -227,6 +268,10 @@ class MainWindow(QMainWindow):
     def open_pdf(self):
         path,_=QFileDialog.getOpenFileName(self,'Select fictional text PDF',str(ROOT/'fixtures'),'PDF files (*.pdf)')
         if not path: return  # Cancel is not replacement; preserve the current session.
+        self.load_pdf(Path(path))
+
+    def load_pdf(self, path):
+        path = str(path)
         # Invalidate first, so even a failed replacement cannot leave an old
         # calendar looking like it belongs to the newly selected filename.
         self.session=ReviewSession(); self.rules.clear(); self.source.clear(); self.document_source.clear(); self.clear_results()
@@ -314,7 +359,7 @@ class MainWindow(QMainWindow):
         self.update_controls()
 
     def export(self):
-        path,_=QFileDialog.getSaveFileName(self,'Export calendar CSV',str(ROOT/'calendar.csv'),'CSV files (*.csv)')
+        path,_=QFileDialog.getSaveFileName(self,'Export calendar CSV',str(self.data_dir/'calendar.csv'),'CSV files (*.csv)')
         if not path: return
         # QFileDialog normally confirms replacement; an explicit second check
         # here also protects platforms that disable the native dialog prompt.
@@ -361,6 +406,7 @@ class MainWindow(QMainWindow):
             self.set_source_text()
             self.file_label.setText(session.source_name)
             self.rules.setPlainText(session.schedule.model_dump_json(indent=2))
+            self.month.setCurrentPage(session.schedule.anchor_date.year,session.schedule.anchor_date.month)
             self.show_page(1)
             self.status.setText('Saved rules loaded. Review and approve again before generating.')
             self.update_controls()
@@ -373,6 +419,59 @@ class MainWindow(QMainWindow):
         try:
             self.store.delete(record_id); self.refresh_records()
             self.status.setText('Selected saved configuration deleted.')
+        except Exception as error: self.error(error)
+
+    def check_model(self):
+        self.worker=ModelStatusWorker()
+        self.worker.succeeded.connect(self.model_status_ready)
+        self.worker.failed.connect(self.model_status.setText)
+        self.worker.finished.connect(self.worker_finished)
+        self.model_status.setText('Checking the local model server…')
+        self.worker.start()
+        self.update_controls()
+
+    def model_status_ready(self, identifiers):
+        if not identifiers:
+            self.model_status.setText('Server connected, but no models are available. Load a model in LM Studio.'); return
+        self.model_status.setText('Server connected. Available model IDs: ' + ', '.join(identifiers))
+        if self.model.text().strip() not in identifiers:
+            self.model.setText('parentvault-research' if 'parentvault-research' in identifiers else identifiers[0])
+
+    def run_comparison(self):
+        """Use approved rules as an explicitly labeled reference, never a hidden key."""
+        if not self.session.pages or not self.model.text().strip():
+            self.error('Select a document and enter the loaded model identifier first.'); return
+        expected = self.session.schedule.model_dump(mode='json') if self.session.approved else None
+        self.comparison_results = None
+        self.comparison_table.setRowCount(0)
+        self.comparison_label.setText('Running both methods. Reference: ' +
+            ('current reviewed rules (not independent ground truth).' if expected else 'none; outputs cannot be scored for accuracy.'))
+        self.worker = ComparisonWorker(self.session.pages, self.model.text().strip(), expected, self.session.source_name)
+        self.worker.succeeded.connect(self.comparison_ready)
+        self.worker.failed.connect(self.error)
+        self.worker.finished.connect(self.worker_finished)
+        self.worker.start()
+        self.update_controls()
+
+    def comparison_ready(self, results):
+        """Reuse the historical renderer after writing only summarized results."""
+        path = self.data_dir/'comparison-latest.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(results, indent=2), encoding='utf-8')
+        self.open_comparison(path)
+        self.comparison_results = results
+        reference = 'reviewed rules; not independent ground truth' if results[0].get('expected') else 'none; accuracy unscored'
+        self.comparison_label.setText('Fresh measured comparison. Reference: ' + reference + '. Approval is unchanged.')
+        self.status.setText('Comparison complete. Method failures remain visible alongside successful outputs.')
+        self.update_controls()
+
+    def export_comparison(self):
+        if not self.comparison_results: return
+        path,_ = QFileDialog.getSaveFileName(self,'Save comparison results',str(self.data_dir/'comparison.json'),'JSON files (*.json)')
+        if not path: return
+        try:
+            Path(path).write_text(json.dumps(self.comparison_results,indent=2),encoding='utf-8')
+            self.status.setText('Comparison summary exported.')
         except Exception as error: self.error(error)
 
     def closeEvent(self, event):

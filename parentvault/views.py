@@ -4,6 +4,7 @@ All widgets are real PySide6 controls. Page navigation and field edits connect
 to MainWindow's existing document/review/storage operations. Styles change how
 the application looks; they do not seed fabricated extraction or saved results.
 """
+from .paths import ASSET_ROOT
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,QButtonGroup,QCalendarWidget,QCheckBox,QComboBox,QDateEdit,
@@ -120,11 +121,14 @@ def build(window):
     panel=QWidget();right=QVBoxLayout(panel);right.setContentsMargins(0,0,0,0);right.setSpacing(16)
     frame,content=card('Select a PDF');w.file_label=label('No document selected','muted');content.addWidget(w.file_label)
     w.open_button=button('Choose PDF',w.open_pdf);content.addWidget(w.open_button)
+    w.sample_button=button('Open sample plan',lambda:w.load_pdf(ASSET_ROOT/'fixtures'/'formal_recurring_plan.pdf'));content.addWidget(w.sample_button)
     content.addWidget(label('Text-based PDF • Up to 10 MB • Scanned pages require OCR','muted'));right.addWidget(frame)
     frame,content=card('Extract scheduling rules')
     content.addWidget(label('Choose a method. Results are proposals until you review and approve them.','muted'))
     w.model=QLineEdit('parentvault-research');w.model.setAccessibleName('Loaded local model identifier')
     content.addWidget(label('Loaded local model'));content.addWidget(w.model)
+    w.model_check_button=button('Check local model connection',w.check_model);content.addWidget(w.model_check_button)
+    w.model_status=label('Connection not checked. Baseline works without LM Studio.','muted');content.addWidget(w.model_status)
     actions=QHBoxLayout();w.baseline_button=button('Baseline extraction',w.run_baseline)
     w.ai_button=button('Local model extraction',w.run_ai,True)
     actions.addWidget(w.baseline_button);actions.addWidget(w.ai_button);content.addLayout(actions)
@@ -216,13 +220,16 @@ def build(window):
     content.addWidget(label('Loading a record always requires review and approval again.','notice'));layout.addWidget(frame)
     layout.addStretch();w.tabs.addWidget(records)
 
-    comparison,layout=page('Research comparison','Compare recorded extraction results against a fixed, authored answer key.')
+    comparison,layout=page('Research comparison','Run a measured extraction comparison, or review recorded experiment results.')
     frame,content=card('Recorded experiment results')
     w.comparison_label=label('No experiment results loaded.','muted');content.addWidget(w.comparison_label)
+    w.compare_run_button=button('Run comparison on current document',w.run_comparison,True);content.addWidget(w.compare_run_button)
+    w.compare_export_button=button('Export latest comparison',w.export_comparison);content.addWidget(w.compare_export_button)
     w.comparison_button=button('Open saved experiment results',w.choose_comparison);content.addWidget(w.comparison_button)
     w.comparison_table=QTableWidget(0,len(HEADERS));w.comparison_table.setHorizontalHeaderLabels(HEADERS)
     w.comparison_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     w.comparison_table.setWordWrap(True);w.comparison_table.horizontalHeader().setStretchLastSection(True)
     content.addWidget(w.comparison_table,1);layout.addWidget(frame,1)
-    layout.addWidget(label('Historical evidence only — loading results does not run inference or change document approval.','notice'))
+    layout.addWidget(label('Run both methods on the current document, or open historical evidence. Accuracy is scored only against explicitly reviewed rules; comparison never grants approval.','notice'))
     w.tabs.addWidget(comparison);w.show_page(0)
+
